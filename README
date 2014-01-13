@@ -1,0 +1,9 @@
+Configuration is possible either via environment variables or java properties.
+
+Possible configuration options:
+	BROKER_URL - The url of the ActiveMQ broker. Default is 'tcp://localhost:61616'
+	MONGO_URL - The url of the MongoDB. Default is 'localhost'
+	EXTRACTION_QUEUE_NAME - The name of the ActiveMQ queue for extraction. Default is 'tweet-extraction'
+	FOLLOWS_QUEUE_NAME - The name of the ActiveMQ queue for follows. Default is 'tweet-follows'
+	MONGO_DATABASE - The name of the MongoDB database. Default is 'twitterdb'
+	MONGO_COLLECTION - The name of the MongoDB database collection. Default is 'statuses'
