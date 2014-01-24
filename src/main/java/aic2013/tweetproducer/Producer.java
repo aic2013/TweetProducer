@@ -30,12 +30,14 @@ public class Producer extends Thread {
     private final Session session;
     private final MessageProducer extractionProducer;
     private final MessageProducer followsProducer;
+    private final MessageProducer followerFetcherProducer;
 
     private static final String BROKER_URL = "tcp://localhost:61616";
     private static final String MONGO_URL = "localhost";
 
     private static final String EXTRACTION_QUEUE_NAME = "tweet-extraction";
     private static final String FOLLOWS_QUEUE_NAME = "tweet-follows";
+    private static final String FOLLOWER_FETCHER_QUEUE = "follower-fetcher";
 
     private static final String MONGO_DATABASE = "twitterdb";
     private static final String MONGO_COLLECTION = "statuses";
@@ -58,14 +60,14 @@ public class Producer extends Thread {
         String mongoUrl = getProperty("MONGO_URL", MONGO_URL);
         String extractionQueueName = getProperty("EXTRACTION_QUEUE_NAME", EXTRACTION_QUEUE_NAME);
         String followsQueueName = getProperty("FOLLOWS_QUEUE_NAME", FOLLOWS_QUEUE_NAME);
+        String followerFetcherQueueName = getProperty("FOLLOWER_FETCHER_QUEUE", FOLLOWER_FETCHER_QUEUE);
         String mongoDatabase = getProperty("MONGO_DATABASE", MONGO_DATABASE);
         String mongoCollection = getProperty("MONGO_COLLECTION", MONGO_COLLECTION);
 
         ConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
         MongoClient mongoClient = new MongoClient(mongoUrl);
 
-        Producer producer = new Producer(mongoClient, mongoDatabase, mongoCollection, factory, extractionQueueName,
-                                         followsQueueName);
+        Producer producer = new Producer(mongoClient, mongoDatabase, mongoCollection, factory, extractionQueueName, followsQueueName, followerFetcherQueueName);
         producer.start();
 
         System.out.println("Started producer with the following configuration:");
@@ -90,7 +92,7 @@ public class Producer extends Thread {
         producer.shutdown();
     }
 
-    public Producer(MongoClient mongoClient, String mongoDatabase, String mongoCollection, ConnectionFactory factory, String extractionQueueName, String followsQueueName)
+    public Producer(MongoClient mongoClient, String mongoDatabase, String mongoCollection, ConnectionFactory factory, String extractionQueueName, String followsQueueName, String followerFetcherQueueName)
         throws JMSException {
         this.mongoClient = mongoClient;
         this.mongoDatabase = mongoDatabase;
@@ -101,6 +103,7 @@ public class Producer extends Thread {
         session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         extractionProducer = session.createProducer(session.createQueue(extractionQueueName));
         followsProducer = session.createProducer(session.createQueue(followsQueueName));
+        followerFetcherProducer = session.createProducer(session.createQueue(followerFetcherQueueName));
     }
 
     public void shutdown() {
