@@ -7,16 +7,12 @@ import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.Destination;
-import javax.jms.JMSException;
-import javax.jms.MessageProducer;
-import javax.jms.Session;
-import javax.jms.TextMessage;
-import org.apache.activemq.ActiveMQConnectionFactory;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.Channel;
 
 public class Producer extends Thread {
 
@@ -27,12 +23,12 @@ public class Producer extends Thread {
     private final String mongoCollection;
     private final ConnectionFactory factory;
     private final Connection connection;
-    private final Session session;
-    private final MessageProducer extractionProducer;
-    private final MessageProducer followsProducer;
-    private final MessageProducer followerFetcherProducer;
+    private final Channel channel;
+    private final String extractionQueueName;
+    private final String followsQueueName;
+    private final String followerFetcherQueueName;
 
-    private static final String BROKER_URL = "tcp://localhost:61616";
+    private static final String BROKER_URL = "amqp://localhost:5672/virtualHost";
     private static final String MONGO_URL = "localhost";
 
     private static final String EXTRACTION_QUEUE_NAME = "tweet-extraction";
@@ -64,7 +60,8 @@ public class Producer extends Thread {
         String mongoDatabase = getProperty("MONGO_DATABASE", MONGO_DATABASE);
         String mongoCollection = getProperty("MONGO_COLLECTION", MONGO_COLLECTION);
 
-        ConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setUri(brokerUrl);
         MongoClient mongoClient = new MongoClient(mongoUrl);
 
         Producer producer = new Producer(mongoClient, mongoDatabase, mongoCollection, factory, extractionQueueName, followsQueueName, followerFetcherQueueName);
@@ -74,6 +71,7 @@ public class Producer extends Thread {
         System.out.println("\tBroker: " + brokerUrl);
         System.out.println("\t\tExtraction queue name: " + extractionQueueName);
         System.out.println("\t\tFollows queue name: " + followsQueueName);
+        System.out.println("\t\tFollower Fetcher queue name: " + followerFetcherQueueName);
         System.out.println("\tMongo: " + mongoUrl);
         System.out.println("\t\tDatabase: " + mongoDatabase);
         System.out.println("\t\tCollection: " + mongoCollection);
@@ -92,18 +90,21 @@ public class Producer extends Thread {
         producer.shutdown();
     }
 
-    public Producer(MongoClient mongoClient, String mongoDatabase, String mongoCollection, ConnectionFactory factory, String extractionQueueName, String followsQueueName, String followerFetcherQueueName)
-        throws JMSException {
+    public Producer(MongoClient mongoClient, String mongoDatabase, String mongoCollection, ConnectionFactory factory, String extractionQueueName, String followsQueueName, String followerFetcherQueueName) throws IOException {
         this.mongoClient = mongoClient;
         this.mongoDatabase = mongoDatabase;
         this.mongoCollection = mongoCollection;
         this.factory = factory;
-        connection = factory.createConnection();
-        connection.start();
-        session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        extractionProducer = session.createProducer(session.createQueue(extractionQueueName));
-        followsProducer = session.createProducer(session.createQueue(followsQueueName));
-        followerFetcherProducer = session.createProducer(session.createQueue(followerFetcherQueueName));
+        this.extractionQueueName = extractionQueueName;
+        this.followsQueueName = followsQueueName;
+        this.followerFetcherQueueName = followerFetcherQueueName;
+
+        connection = factory.newConnection();
+        channel = connection.createChannel();
+
+        channel.queueDeclare(extractionQueueName, true, false, false, null);
+        channel.queueDeclare(followsQueueName, true, false, false, null);
+        channel.queueDeclare(followerFetcherQueueName, true, false, false, null);
     }
 
     public void shutdown() {
@@ -119,11 +120,11 @@ public class Producer extends Thread {
 
             while (running && cursor.hasNext()) {
                 try {
-                    TextMessage message = session.createTextMessage(cursor.next()
-                        .toString());
-                    extractionProducer.send(message);
-                    followsProducer.send(message);
-                } catch (JMSException ex) {
+                    String message = cursor.next().toString();
+                    channel.basicPublish("", extractionQueueName, null, message.getBytes());
+                    channel.basicPublish("", followsQueueName, null, message.getBytes());
+                    channel.basicPublish("", followerFetcherQueueName, null, message.getBytes());
+                } catch (IOException ex) {
                     Logger.getLogger(Producer.class.getName())
                         .log(Level.SEVERE, null, ex);
                 } catch (MongoException ex) {
@@ -142,10 +143,10 @@ public class Producer extends Thread {
     private void close() {
         if (connection != null) {
             try {
+                channel.close();
                 connection.close();
-            } catch (JMSException ex) {
-                Logger.getLogger(Producer.class.getName())
-                    .log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(Producer.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
         if (mongoClient != null) {
