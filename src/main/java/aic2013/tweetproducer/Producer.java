@@ -5,8 +5,6 @@ import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -64,7 +62,20 @@ public class Producer extends Thread {
         factory.setUri(brokerUrl);
         MongoClient mongoClient = new MongoClient(mongoUrl);
 
-        Producer producer = new Producer(mongoClient, mongoDatabase, mongoCollection, factory, extractionQueueName, followsQueueName, followerFetcherQueueName);
+        final Producer producer = new Producer(mongoClient, mongoDatabase, mongoCollection, factory, extractionQueueName, followsQueueName, followerFetcherQueueName);
+
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            @Override
+            public void run() {
+                if (producer != null) {
+                    producer.shutdown();
+                }
+
+                System.out.println("Exiting");
+                System.exit(0);
+            }
+        });
+
         producer.start();
 
         System.out.println("Started producer with the following configuration:");
@@ -78,16 +89,9 @@ public class Producer extends Thread {
         System.out.println();
         System.out.println("To shutdown the application please type 'exit'.");
 
-        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-        String command;
-
-        while ((command = br.readLine()) != null) {
-            if ("exit".equals(command)) {
-                break;
-            }
+        while (true) {
+            Thread.sleep(1000);
         }
-
-        producer.shutdown();
     }
 
     public Producer(MongoClient mongoClient, String mongoDatabase, String mongoCollection, ConnectionFactory factory, String extractionQueueName, String followsQueueName, String followerFetcherQueueName) throws IOException {
