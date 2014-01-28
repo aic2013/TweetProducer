@@ -123,7 +123,7 @@ public class Producer extends Thread {
             DB db = mongoClient.getDB(mongoDatabase);
             DBCollection statusCollection = db.getCollection(mongoCollection);
             BasicDBObject query = new BasicDBObject("producer_processed", null);
-            DBCursor cursor = statusCollection.find(query);
+            DBCursor cursor = statusCollection.find();
 
             while (running && cursor.hasNext()) {
                 try {
