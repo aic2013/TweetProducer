@@ -1,8 +1,10 @@
 package aic2013.tweetproducer;
 
+import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
+import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
 import java.io.IOException;
@@ -120,14 +122,19 @@ public class Producer extends Thread {
         try {
             DB db = mongoClient.getDB(mongoDatabase);
             DBCollection statusCollection = db.getCollection(mongoCollection);
-            DBCursor cursor = statusCollection.find();
+            BasicDBObject query = new BasicDBObject("producer_processed", new BasicDBObject("$ne", true));
+            DBCursor cursor = statusCollection.find(query);
 
             while (running && cursor.hasNext()) {
                 try {
-                    String message = cursor.next().toString();
+                    DBObject tweet = cursor.next();
+                    String message = tweet.toString();
                     channel.basicPublish("", extractionQueueName, null, message.getBytes());
                     channel.basicPublish("", followsQueueName, null, message.getBytes());
                     channel.basicPublish("", followerFetcherQueueName, null, message.getBytes());
+
+                    tweet.put("producer_processed", true);
+                    statusCollection.save(tweet);
                 } catch (IOException ex) {
                     Logger.getLogger(Producer.class.getName())
                         .log(Level.SEVERE, null, ex);
